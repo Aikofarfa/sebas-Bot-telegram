@@ -1,3 +1,9 @@
+# =============================================================================
+# BOT DE SEÑALES SIMPLE - CRUCE DE MEDIAS MÓVILES (Binance + Telegram)
+# Versión educativa - SOLO ENVÍA SEÑALES, NO OPERA
+# No requiere claves API de Binance (usa endpoints públicos)
+# =============================================================================
+
 import ccxt
 import pandas as pd
 import pandas_ta as ta
@@ -10,30 +16,30 @@ from telegram.error import TelegramError
 # CONFIGURACIÓN - CAMBIA ESTOS VALORES
 # ────────────────────────────────────────────────
 
-# Binance (testnet o real - en este caso no afecta porque no usamos claves)
-TESTNET = True  # Puedes dejar True o False, no cambia nada aquí
+# Binance (testnet o real - no afecta porque no usamos claves)
+TESTNET = True
 
 # Par y temporalidad
 SYMBOL = "BTC/USDT"
 TIMEFRAME = "5m"          # 5 minutos
-CANDLES_TO_LOAD = 100     # cuántas velas cargar para calcular indicadores
+CANDLES_TO_LOAD = 100     # cuántas velas cargar
 
 # Estrategia: cruce de medias móviles
 FAST_MA_PERIOD = 9
 SLOW_MA_PERIOD = 21
 
-# Telegram (crea un bot con @BotFather)
-TELEGRAM_TOKEN = "8542964886:AAFi2UG4MrSyCn7MFG3qh-4xYIOGwFq9gug"          # ejemplo: 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
-TELEGRAM_CHAT_ID = "8576880914"          # tu ID o el de un canal/grupo
+# Telegram
+TELEGRAM_TOKEN = "8542964886:AAFi2UG4MrSyCn7MFG3qh-4xYIOGwFq9gug"          # El token que te dio @BotFather
+TELEGRAM_CHAT_ID = "8576880914"          # Tu chat ID (número)
 
 # Intervalo de chequeo (segundos)
 SLEEP_SECONDS = 60
 
 # ────────────────────────────────────────────────
-# NO CAMBIES NADA DE AQUÍ PARA ABAJO (a menos que sepas qué haces)
+# NO CAMBIES NADA DE AQUÍ PARA ABAJO
 # ────────────────────────────────────────────────
 
-# Inicializar Binance (sin claves → solo datos públicos)
+# Inicializar Binance (solo datos públicos)
 exchange_options = {
     'enableRateLimit': True,
 }
@@ -45,7 +51,7 @@ exchange = ccxt.binance(exchange_options)
 # Inicializar Telegram
 bot = Bot(token=TELEGRAM_TOKEN)
 
-last_signal = None  # Para no enviar la misma señal repetidamente
+last_signal = None  # Evita enviar la misma señal repetidamente
 
 def enviar_mensaje(texto):
     try:
@@ -79,7 +85,7 @@ def analizar_mercado(df):
     ultima = df.iloc[-1]
     anterior = df.iloc[-2]
 
-    # Cruce alcista (compra)
+    # Cruce alcista → COMPRA
     if (anterior['fast_ma'] <= anterior['slow_ma']) and (ultima['fast_ma'] > ultima['slow_ma']):
         señal = "🟢 COMPRA (cruce alcista)"
         if last_signal != "buy":
@@ -94,7 +100,7 @@ def analizar_mercado(df):
             last_signal = "buy"
         return señal
 
-    # Cruce bajista (venta)
+    # Cruce bajista → VENTA
     elif (anterior['fast_ma'] >= anterior['slow_ma']) and (ultima['fast_ma'] < ultima['slow_ma']):
         señal = "🔴 VENTA (cruce bajista)"
         if last_signal != "sell":
