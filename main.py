@@ -30,7 +30,7 @@ SLOW_MA_PERIOD = 21
 
 # Telegram (crea un bot con @BotFather)
 TELEGRAM_TOKEN = "TU_BOT_TOKEN_AQUÍ"          # ejemplo: 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
-TELEGRAM_CHAT_ID = "TU_CHAT_ID_AQUÍ"          # tu ID o el de un canal/grupo
+TELEGRAM_CHAT_ID = "8576880914"          # tu ID o el de un canal/grupo
 
 # Intervalo de chequeo (segundos)
 SLEEP_SECONDS = 60
@@ -135,3 +135,4 @@ while True:
         print(f"Error en bucle principal: {e}")
 
     time.sleep(60)
+
