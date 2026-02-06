@@ -1,3 +1,4 @@
 ccxt
-ta
-python-dotenv  # Para cargar variables de entorno localmente (opcional para tests locales)
+pandas
+pandas_ta
+python-telegram-bot==13.7
