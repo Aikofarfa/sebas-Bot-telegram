@@ -1,90 +1,137 @@
-import os
-import time
+# =============================================================================
+# BOT DE SEÑALES SIMPLE - CRUCE DE MEDIAS MÓVILES (Binance + Telegram)
+# Versión educativa - SOLO ENVÍA SEÑALES, NO OPERA
+# No requiere claves API de Binance (usa endpoints públicos)
+# =============================================================================
+
 import ccxt
-from ta.momentum import RSIIndicator
-from ta.trend import SMAIndicator
 import pandas as pd
+import pandas_ta as ta
+import time
+from datetime import datetime
+from telegram import Bot
+from telegram.error import TelegramError
 
-# Configuración
-exchange = ccxt.binance({
-    'apiKey': os.getenv('BINANCE_API_KEY'),
-    'secret': os.getenv('BINANCE_API_SECRET'),
+# ────────────────────────────────────────────────
+# CONFIGURACIÓN - CAMBIA ESTOS VALORES
+# ────────────────────────────────────────────────
+
+# Binance (testnet o real - en este caso no afecta porque no usamos claves)
+TESTNET = True  # Puedes dejar True o False, no cambia nada aquí
+
+# Par y temporalidad
+SYMBOL = "BTC/USDT"
+TIMEFRAME = "5m"          # 5 minutos
+CANDLES_TO_LOAD = 100     # cuántas velas cargar para calcular indicadores
+
+# Estrategia: cruce de medias móviles
+FAST_MA_PERIOD = 9
+SLOW_MA_PERIOD = 21
+
+# Telegram (crea un bot con @BotFather)
+TELEGRAM_TOKEN = "TU_BOT_TOKEN_AQUÍ"          # ejemplo: 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
+TELEGRAM_CHAT_ID = "TU_CHAT_ID_AQUÍ"          # tu ID o el de un canal/grupo
+
+# Intervalo de chequeo (segundos)
+SLEEP_SECONDS = 60
+
+# ────────────────────────────────────────────────
+# NO CAMBIES NADA DE AQUÍ PARA ABAJO (a menos que sepas qué haces)
+# ────────────────────────────────────────────────
+
+# Inicializar Binance (sin claves → solo datos públicos)
+exchange_options = {
     'enableRateLimit': True,
-    'options': {
-        'defaultType': 'spot',  # Cambia a 'future' si quieres futuros
-    },
-})
-exchange.set_sandbox_mode(True)  # Activa modo testnet
+}
+if TESTNET:
+    exchange_options['urls'] = {'api': {'public': 'https://testnet.binance.vision/api'}}
 
-SYMBOL = 'BTC/USDT'
-TIMEFRAME = '1h'  # Intervalo de velas: 1 hora
-SHORT_PERIOD = 12  # Media móvil corta
-LONG_PERIOD = 26  # Media móvil larga
-RSI_PERIOD = 14  # Período RSI
-RSI_OVERBOUGHT = 70  # Vender si RSI > 70
-RSI_OVERSOLD = 30  # Comprar si RSI < 30
-AMOUNT = 0.001  # Cantidad de BTC a operar (ajusta según fondos demo)
+exchange = ccxt.binance(exchange_options)
 
-def get_price():
-    ticker = exchange.fetch_ticker(SYMBOL)
-    return ticker['last']
+# Inicializar Telegram
+bot = Bot(token=TELEGRAM_TOKEN)
 
-def get_account_balance():
-    balance = exchange.fetch_balance()
-    usdt = balance['USDT']['free'] if 'USDT' in balance else 0
-    btc = balance['BTC']['free'] if 'BTC' in balance else 0
-    return {'USDT': usdt, 'BTC': btc}
+last_signal = None  # Para no enviar la misma señal repetidamente
 
-def get_historical_data():
-    ohlcv = exchange.fetch_ohlcv(SYMBOL, TIMEFRAME, limit=LONG_PERIOD + RSI_PERIOD)
-    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-    return df
+def enviar_mensaje(texto):
+    try:
+        bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=texto, parse_mode="Markdown")
+        print(f"[Telegram] Mensaje enviado: {texto}")
+    except TelegramError as e:
+        print(f"Error al enviar mensaje por Telegram: {e}")
 
-def calculate_indicators(df):
-    sma_short = SMAIndicator(df['close'], window=SHORT_PERIOD).sma_indicator()
-    sma_long = SMAIndicator(df['close'], window=LONG_PERIOD).sma_indicator()
-    rsi = RSIIndicator(df['close'], window=RSI_PERIOD).rsi()
-    return sma_short.iloc[-1], sma_long.iloc[-1], rsi.iloc[-1]
 
-def execute_trade(action):
-    if action == 'buy':
-        order = exchange.create_market_buy_order(SYMBOL, AMOUNT)
-        print(f"Compra ejecutada: {order}")
-    elif action == 'sell':
-        order = exchange.create_market_sell_order(SYMBOL, AMOUNT)
-        print(f"Venta ejecutada: {order}")
+def obtener_datos():
+    try:
+        ohlcv = exchange.fetch_ohlcv(SYMBOL, timeframe=TIMEFRAME, limit=CANDLES_TO_LOAD)
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        return df
+    except Exception as e:
+        print(f"Error al obtener velas: {e}")
+        return None
 
-def main():
-    while True:
-        try:
-            # Obtener precio actual
-            price = get_price()
-            print(f"Precio actual de BTC/USDT: {price}")
 
-            # Obtener estado de cuenta
-            balance = get_account_balance()
-            print(f"Estado de la cuenta: USDT: {balance['USDT']}, BTC: {balance['BTC']}")
+def analizar_mercado(df):
+    global last_signal
 
-            # Obtener datos históricos
-            df = get_historical_data()
+    if df is None or len(df) < SLOW_MA_PERIOD:
+        return None
 
-            # Calcular indicadores
-            sma_short, sma_long, rsi = calculate_indicators(df)
+    # Calcular medias móviles
+    df['fast_ma'] = ta.sma(df['close'], length=FAST_MA_PERIOD)
+    df['slow_ma'] = ta.sma(df['close'], length=SLOW_MA_PERIOD)
 
-            # Lógica de la estrategia
-            if sma_short > sma_long and rsi < RSI_OVERSOLD:
-                print("Señal de COMPRA: MA corta > MA larga y RSI oversold")
-                execute_trade('buy')
-            elif sma_short < sma_long and rsi > RSI_OVERBOUGHT:
-                print("Señal de VENTA: MA corta < MA larga y RSI overbought")
-                execute_trade('sell')
+    ultima = df.iloc[-1]
+    anterior = df.iloc[-2]
+
+    # Cruce alcista (compra)
+    if (anterior['fast_ma'] <= anterior['slow_ma']) and (ultima['fast_ma'] > ultima['slow_ma']):
+        señal = "🟢 COMPRA (cruce alcista)"
+        if last_signal != "buy":
+            mensaje = (
+                f"*{señal}*\n"
+                f"Par: `{SYMBOL}`\n"
+                f"Temporalidad: {TIMEFRAME}\n"
+                f"Precio: {ultima['close']:.2f}\n"
+                f"Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            enviar_mensaje(mensaje)
+            last_signal = "buy"
+        return señal
+
+    # Cruce bajista (venta)
+    elif (anterior['fast_ma'] >= anterior['slow_ma']) and (ultima['fast_ma'] < ultima['slow_ma']):
+        señal = "🔴 VENTA (cruce bajista)"
+        if last_signal != "sell":
+            mensaje = (
+                f"*{señal}*\n"
+                f"Par: `{SYMBOL}`\n"
+                f"Temporalidad: {TIMEFRAME}\n"
+                f"Precio: {ultima['close']:.2f}\n"
+                f"Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            enviar_mensaje(mensaje)
+            last_signal = "sell"
+        return señal
+
+    return None
+
+
+# Bucle principal
+print("Bot de señales iniciado...")
+print(f"Par: {SYMBOL} | Temporalidad: {TIMEFRAME} | Chequeo cada {SLEEP_SECONDS} segundos\n")
+
+while True:
+    try:
+        df = obtener_datos()
+        if df is not None:
+            señal = analizar_mercado(df)
+            if señal:
+                print(f"{datetime.now().strftime('%H:%M:%S')} → {señal}")
             else:
-                print("Sin señal de trade")
+                print(f"{datetime.now().strftime('%H:%M:%S')} → Sin señal nueva")
+    except Exception as e:
+        print(f"Error en bucle principal: {e}")
 
-        except Exception as e:
-            print(f"Error: {e}")
-
-        time.sleep(300)  # Espera 5 minutos (ajusta según timeframe)
-
-if __name__ == "__main__":
-    main()
+    time.sleep(60)
