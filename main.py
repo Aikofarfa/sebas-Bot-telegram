@@ -1,9 +1,3 @@
-# =============================================================================
-# BOT DE SEÑALES SIMPLE - CRUCE DE MEDIAS MÓVILES (Binance + Telegram)
-# Versión educativa - SOLO ENVÍA SEÑALES, NO OPERA
-# No requiere claves API de Binance (usa endpoints públicos)
-# =============================================================================
-
 import ccxt
 import pandas as pd
 import pandas_ta as ta
@@ -135,5 +129,6 @@ while True:
         print(f"Error en bucle principal: {e}")
 
     time.sleep(60)
+
 
 
